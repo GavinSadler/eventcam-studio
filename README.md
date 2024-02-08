@@ -4,7 +4,7 @@ eventcam-studio is a program which will interface with the [SilkyEvCam EvC3A](ht
 
 ## How to clone this repository
 
-If you're reading this message, you have access to this private repository! Yipeee! 🎉
+If you're reading this message, you have access to this repository! Yipeee! 🎉
 
 Try cloning this repository by opening a command prompt window with the following command:
 
@@ -13,7 +13,7 @@ Try cloning this repository by opening a command prompt window with the followin
 If you got some sort of error saying `git is an unrecognized command`, you probably need to install git. Navigate to [this website](https://gitforwindows.org/)
 and install git onto your computer.
 
-You may not simply be able to `git clone` this repository onto your machine, as it is a private repo. One solution is to create a set of SSH keys on
+You may not simply be able to `git clone` this repository onto your machine. One solution is to create a set of SSH keys on
 your machine and add them to your Github account. Github already has a few guides on this topic, which you can read in the following articles:
 
 [Check to see if you have existing SSH keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys)\
