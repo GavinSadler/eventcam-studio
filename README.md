@@ -47,3 +47,5 @@ Both SDKs and the event-camera driver can be downloaded and installed from their
 [Metavision SDK (Make sure to download version 4.4.0 or greater!)](https://files.prophesee.ai/share/dists/public/windows/baiTh5si/)\
 [SilkyEvCam EvC3A driver (This is required to interface with our specific camera)](https://centuryarks.com/en/download/)\
 [Basler's Pylon SDK (Download the latest version of the software suite)](https://www2.baslerweb.com/en/downloads/software-downloads/)
+
+[Metavision Trigger info](https://docs.prophesee.ai/stable/hw/manuals/timing_interfaces.html?highlight=triggers#trigger-in)
