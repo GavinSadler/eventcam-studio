@@ -1,6 +1,6 @@
 
-#define DISABLE
-#ifndef DISABLE
+#define DISABLE_GRABVIDEO_CPP
+#ifndef DISABLE_GRABVIDEO_CPP
 
 // Utility_GrabVideo.cpp
 /*
@@ -20,15 +20,12 @@
 
 // Include files for Metavision video writing
 #include <metavision/sdk/core/utils/video_writer.h>
+#include <metavision/sdk/core/utils/cv_video_recorder.h>
+#include <opencv2/core.hpp>
 
-// Namespace for using pylon objects.
-//using namespace Pylon;
-
-// Namespace for using GenApi objects.
-//using namespace GenApi;
-
-// Namespace for using cout.
-//using namespace std;
+//#define AVI_WRITER
+//#define VIDEO_WRITER
+#define METAVISION_VIDEO_RECORDER
 
 using std::cout, std::cerr, std::cin, std::endl;
 
@@ -48,6 +45,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
     try
     {
+#ifdef VIDEO_WRITER
         // Check if CVideoWriter is supported and all DLLs are available.
         if (!Pylon::CVideoWriter::IsSupported())
         {
@@ -61,14 +59,23 @@ int main(int /*argc*/, char* /*argv*/[])
         // Create a video writer object.
         Pylon::CVideoWriter videoWriter;
 
+        // The quality used for compressing the video.
+        const uint32_t cQuality = 10;
+#endif
+#ifdef AVI_WRITER
+        // Create an AVI writer object.
+        Pylon::CAviWriter aviWriter;
+
+        // The AVI writer supports the output formats PixelType_Mono8,
+        // PixelType_BGR8packed, and PixelType_BGRA8packed.
+        Pylon::EPixelType aviPixelType = Pylon::PixelType_BGR8packed;
+#endif
+
         // The frame rate used for playing the video (playback frame rate).
         const int cFramesPerSecond = 20;
-        // The quality used for compressing the video.
-        const uint32_t cQuality = 90;
 
         // Create an instant camera object with the first camera device found.
-        //Pylon::CInstantCamera camera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
-        Pylon::CInstantCamera camera(Pylon::CTLFactory::);
+        Pylon::CInstantCamera camera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
 
         // Print the model name of the camera.
         cout << "Using device " << camera.GetDeviceInfo().GetModelName() << endl;
@@ -86,6 +93,7 @@ int main(int /*argc*/, char* /*argv*/[])
         width.TrySetValue(640, Pylon::EIntegerValueCorrection::IntegerValueCorrection_Nearest);
         height.TrySetValue(480, Pylon::EIntegerValueCorrection::IntegerValueCorrection_Nearest);
 
+#ifdef VIDEO_WRITER
         // Map the pixelType
         Pylon::CPixelTypeMapper pixelTypeMapper(&pixelFormat);
         Pylon::EPixelType pixelType = pixelTypeMapper.GetPylonPixelTypeFromNodeValue(pixelFormat.GetIntValue());
@@ -100,7 +108,49 @@ int main(int /*argc*/, char* /*argv*/[])
 
         // Open the video writer.
         videoWriter.Open("_TestVideo.mp4");
+#endif
+#ifdef AVI_WRITER
+        if (pixelFormat.IsReadable())
+        {
+            // If the camera produces Mono8 images use Mono8 for the AVI file.
+            if (pixelFormat.GetValue() == "Mono8")
+            {
+                aviPixelType = Pylon::PixelType_Mono8;
+            }
+        }
 
+        // Optionally set up compression options.
+        Pylon::SAviCompressionOptions* pCompressionOptions = NULL;
+        // Uncomment the two code lines below to enable AVI compression.
+        // A dialog will be shown for selecting the codec.
+        //SAviCompressionOptions compressionOptions( "MSVC", true);
+        //pCompressionOptions = &compressionOptions;
+
+        // Open the AVI writer.
+        aviWriter.Open(
+            "_TestAvi.avi",
+            cFramesPerSecond,
+            aviPixelType,
+            (uint32_t)width.GetValue(),
+            (uint32_t)height.GetValue(),
+            Pylon::ImageOrientation_BottomUp, // Some compression codecs will not work with top down oriented images.
+            pCompressionOptions);
+#endif
+#ifdef METAVISION_VIDEO_RECORDER
+        Metavision::CvVideoRecorder metaWriter = Metavision::CvVideoRecorder(
+            "_TestMeta.mp4",
+            Metavision::VideoWriter::fourcc('H', '2', '6', '4'),
+            cFramesPerSecond,
+            cv::Size((uint32_t)width.GetValue(), (uint32_t)height.GetValue()),
+            true
+        );
+
+        metaWriter.start();
+
+        Pylon::CImageFormatConverter fc;
+        fc.OutputPixelFormat = Pylon::PixelType_BGR8packed;
+        Pylon::CPylonImage image;
+#endif
         // Start the grabbing of c_countOfImagesToGrab images.
         // The camera device is parameterized with a default configuration which
         // sets up free running continuous acquisition.
@@ -133,6 +183,7 @@ int main(int /*argc*/, char* /*argv*/[])
                 Pylon::DisplayImage(1, ptrGrabResult);
 #endif
 
+#ifdef VIDEO_WRITER
                 // If required, the grabbed image is converted to the correct format and is then added to the video file.
                 // If the orientation of the image does not mach the orientation required for video compression, the
                 // image will be flipped automatically to ImageOrientation_TopDown, unless the input pixel type is Yuv420p.
@@ -149,6 +200,40 @@ int main(int /*argc*/, char* /*argv*/[])
                     cout << "The image data size limit has been reached." << endl;
                     break;
                 }
+#endif
+#ifdef AVI_WRITER
+                // If required, the grabbed image is converted to the correct format and is then added to the AVI file.
+                // The orientation of the image taken by the camera is top down.
+                // The bottom up orientation is specified to apply when opening the Avi Writer. That is why the image is
+                // always converted before it is added to the AVI file.
+                // To maximize frame rate try to avoid image conversion (see the CanAddWithoutConversion() method).
+                aviWriter.Add(ptrGrabResult);
+
+                // If images are skipped, writing AVI frames takes too much processing time.
+                cout << "Images Skipped = " << ptrGrabResult->GetNumberOfSkippedImages() << std::ios_base::boolalpha
+                    << "; Image has been converted = " << !aviWriter.CanAddWithoutConversion(ptrGrabResult)
+                    << endl;
+
+                // Check whether the image data size limit has been reached to avoid the AVI File to get too large.
+                // The size returned by GetImageDataBytesWritten() does not include the sizes of the AVI file header and AVI file index.
+                // See the documentation for GetImageDataBytesWritten() for more information.
+                if (c_maxImageDataBytesThreshold < aviWriter.GetImageDataBytesWritten())
+                {
+                    cout << "The image data size limit has been reached." << endl;
+                    break;
+                }
+#endif
+#ifdef METAVISION_VIDEO_RECORDER
+                // Access the image data.
+                fc.Convert(image, ptrGrabResult);
+                cv::Mat cv_img = cv::Mat(ptrGrabResult->GetHeight(), ptrGrabResult->GetWidth(), CV_8UC3, (uint8_t*)image.GetBuffer());
+
+                metaWriter.write(cv_img);
+
+                // If images are skipped, writing AVI frames takes too much processing time.
+                cout << "Images Skipped = " << ptrGrabResult->GetNumberOfSkippedImages() << std::ios_base::boolalpha
+                    << endl;
+#endif
             }
             else
             {

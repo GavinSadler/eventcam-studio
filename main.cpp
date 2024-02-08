@@ -1,101 +1,104 @@
 
-#include <chrono>
-#include <iostream>
-#include <string>
-#include <thread>
+#include "ImageGrabHandler.h"
 
-#include <metavision/hal/facilities/i_event_decoder.h>
-#include <metavision/sdk/base/events/event_cd.h>
-#include <metavision/sdk/base/events/event_ext_trigger.h>
-#include <metavision/sdk/core/algorithms/periodic_frame_generation_algorithm.h>
+#include <pylon/PylonIncludes.h>
+
+#include <metavision/hal/utils/camera_discovery.h>
+#include <metavision/hal/utils/hal_exception.h>
+#include <metavision/hal/facilities/i_hw_identification.h>
+
 #include <metavision/sdk/driver/camera.h>
 
+#include <iostream>
+#include <memory>
 
-using std::string;
-using std::cout, std::cerr, std::endl;
 
-int main(int argc, char** argv)
+int main(int argc, char* argv[])
 {
+    Pylon::PylonInitialize();
+    
+    Metavision::Camera eventCamera;
+    Pylon::CInstantCamera frameCamera;
 
-#ifdef _DEBUG
-    string in_raw_file_path = "../../../recordings/dan402_2_extTrig.raw";
-#else
-
-    if (argc < 2)
+    do
     {
-        std::cerr << "Error: input filepath needed.\n";
-        exit(1);
+        try {
+            std::cout << "\n=== Attempting to connect to frame camera ===\n";
+
+            frameCamera.Attach(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
+            
+            std::cout << "\n=== Connected to frame camera ===\n";
+
+            std::cout << "\n=== Attempting to connect to event camera ===\n";
+
+            eventCamera = Metavision::Camera::from_first_available();
+            
+            std::cout << "\n=== Connected to event camera ===\n";
+
+            break;
+        }
+        catch (const Pylon::GenericException& e)
+        {
+            std::cout << "\nError when connecting to frame camera: " << e.what() << "\n";
+        }
+        catch (const Metavision::CameraException& e)
+        {
+            std::cout << "\nError when connecting to event camera: " << e.what() << "\n";
+        }
+
+        std::cerr << "\nPress enter to retry...";
+        while (std::cin.get() != '\n');
+
+    } while (true);
+
+    try
+    {
+        std::string dataOutputName;
+
+        std::cout << "Enter data file output name: ";
+        std::cin >> dataOutputName;
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+        std::cout << "Will output as " << dataOutputName << ".mp4 and " << dataOutputName << ".raw\n";
+
+        // See ImageGrabHandler.cpp for camera configuration and callback definition
+        ImageGrabHandler imageGrabber(dataOutputName + ".mp4");
+        frameCamera.RegisterImageEventHandler(&imageGrabber, Pylon::ERegistrationMode::RegistrationMode_Append, Pylon::ECleanup::Cleanup_None);
+
+        std::cerr << "\nPress enter to start recording...\n";
+        while (std::cin.get() != '\n');
+
+        eventCamera.start();
+            
+        eventCamera.start_recording(dataOutputName + ".raw");
+        frameCamera.StartGrabbing(Pylon::GrabStrategy_LatestImages, Pylon::GrabLoop_ProvidedByInstantCamera);
+
+        std::cerr << "\nPress enter to stop capturing...\n";
+        while (std::cin.get() != '\n');
+
+        eventCamera.stop_recording();
+        eventCamera.stop();
+
+        frameCamera.StopGrabbing();
+        frameCamera.DeregisterImageEventHandler(&imageGrabber);
+    }
+    catch (const Pylon::GenericException& e)
+    {
+        std::cerr << "\nAn exception occurred.\n"
+            << e.what() << "\n";
+    }
+    catch (const Metavision::CameraException& e)
+    {
+        std::cerr << "\nAn exception occurred.\n"
+            << e.what() << "\n";
     }
 
-    string in_raw_file_path = argv[1];
-#endif
+    // Comment the following two lines to disable waiting on exit.
+    std::cerr << "\nPress enter to exit program...\n";
+    while (std::cin.get() != '\n');
 
-    Metavision::Camera camera = Metavision::Camera::from_file(in_raw_file_path);
-
-    //Metavision::timestamp min(LLONG_MAX), max(LLONG_MIN);
-    //std::cout << min << ";" << max << std::endl;
-    //
-    //auto cbid = camera.cd().add_callback(
-    //    [&](const Metavision::EventCD* b, const Metavision::EventCD* e) {
-    //        if (b->t < min)
-    //            min = b->t;
-    //        if (e->t > max)
-    //            max = e->t;
-    //        //std::cout << b->t << "\t" << e->t << std::endl;
-    //    }
-    //);
-
-    int eventCount = 0;
-    auto events = std::vector<const Metavision::EventExtTrigger*>();
-    std::set<Metavision::EventExtTrigger> eventsSet;
-    std::set<int> eventsTimestampSet;
-
-    camera.get_device().get_facility<Metavision::I_EventDecoder<Metavision::EventExtTrigger>>()->add_event_buffer_callback(
-        [&](const Metavision::EventExtTrigger* begin, const Metavision::EventExtTrigger* end)
-        {
-            for (auto i = begin; i < end; i++)
-            {
-                events.push_back(i);
-                eventsSet.insert(Metavision::EventExtTrigger(*i));
-                eventsTimestampSet.insert(i->t);
-                eventCount++;
-            }
-        }
-    );
-
-    // Despite looking exactly like the code above, this method of adding a callback has significant overhead
-    // Like, it takes over 100X the amount of time to do this instead of the callback defined above
-    /*
-    auto extTrig = camera.ext_trigger().add_callback(
-        [&events](const Metavision::EventExtTrigger* begin, const Metavision::EventExtTrigger* end)
-        {
-            events++;
-            //std::cout << *begin << "\t" << *end << std::endl;
-        }
-    );
-    */
-
-    camera.start();
-
-    std::cout << "Resolution: " << camera.geometry().width() << "x" << camera.geometry().height() << std::endl;
-
-    while (camera.is_running()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000 * 1));
-        std::cout << "Events so far: " << eventCount << std::endl;
-    }
-
-    camera.stop();
-
-    std::cout
-        << "Events vector count: " << events.size()
-        << "\tEvents set count: " << eventsSet.size()
-        << "\tEvents timestamp set count" << eventsTimestampSet.size()
-        << "\tRising and falling edge pairs: " << events.size() / 2 << std::endl;
-
-    /*for (auto& e : eventsSet)
-    {
-        std::cout << e << "\n";
-    }*/
+    // Releases all pylon resources.
+    Pylon::PylonTerminate();
 
     return 0;
 }
