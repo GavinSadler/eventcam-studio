@@ -47,8 +47,8 @@ void ImageGrabHandler::OnImageEventHandlerRegistered(Pylon::CInstantCamera& came
     for each (auto setting in settingsReferences)
         std::cout << "\t" << (*setting).GetNode()->GetName() << ": " << (*setting).ToString() << std::endl;
 
-    width.TrySetValue(640);
-    height.TrySetValue(480);
+    width.TrySetValue(2560);
+    height.TrySetValue(1920);
     centerX.Execute();
     centerY.Execute();
     pixelFormat.TrySetValue("RGB8");
@@ -85,6 +85,8 @@ void ImageGrabHandler::OnImageGrabbed(Pylon::CInstantCamera& camera, const Pylon
     // If the orientation of the image does not mach the orientation required for video compression, the
     // image will be flipped automatically to ImageOrientation_TopDown, unless the input pixel type is Yuv420p.
     videoWriter.Add(grabResult);
+    const Pylon::IImage& image(grabResult);
+    std::cout << "Pixel type: " << image.GetPixelType() << "\n";
 
     // If images are skipped, writing video frames takes too much processing time.
     std::cout << "Images Skipped = " << grabResult->GetNumberOfSkippedImages() << std::ios_base::boolalpha
