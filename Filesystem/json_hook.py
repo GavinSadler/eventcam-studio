@@ -1,16 +1,25 @@
 import json
 import fs_folder
+import filesystem
 
 def object_decoder(obj):
-    if obj.__repr__ == 'fs_folder.Folder':
+    if type(obj) == fs_folder.Folder:
         return fs_folder.Folder(obj['tags'])
     return obj
-
-class object_encoder(json.JSONEncoder):
-    def default(self, o):
-        # Check if name is filesystem
-        _iterate_filesystem(o)
-        return o.__dict__
     
-def _iterate_filesystem(o):
-    return str(o.root_path) + str(o.folders.dict)
+def iterate_filesystem(o):
+    result = "{" + _create_tag("root_dir", str(o.root_dir))
+
+    for key in o.folders.keys():
+        result += _create_tag(key, o.folders[key].tags)
+
+    result = result[:-1] + "}"
+
+    return result
+
+# Creates a tag for json ending in a comma (,).
+def _create_tag(key: str, value: any) -> str:
+    if type(value) != str:
+        return "\"" + key + "\": " + str(value).replace("\'", "\"") + ","
+    else:
+        return "\"" + key + "\": \"" + value + "\","
